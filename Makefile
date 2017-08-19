@@ -16,7 +16,7 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 
 PKGNAME = snap-sync
-PREFIX ?= /usr
+PREFIX ?= /usr/local
 SNAPPER_CONFIG ?= /etc/sysconfig/snapper
 
 BIN_DIR = $(DESTDIR)$(PREFIX)/bin
