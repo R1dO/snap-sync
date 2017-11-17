@@ -24,7 +24,14 @@ snapper is required.
 
     # make install
 
-The package is available in the [AUR](https://aur.archlinux.org/packages/snap-sync/).
+If your system uses a non-default location for the snapper
+configuration file, specify it on the command line with
+`SNAPPER_CONFIG`. For example, for Arch Linux use:
+
+    # make SNAPPER_CONFIG=/etc/conf.d/snapper install
+
+The package is also available in the
+[AUR](https://aur.archlinux.org/packages/snap-sync/).
 
 ## Options
 
@@ -39,6 +46,7 @@ The package is available in the [AUR](https://aur.archlinux.org/packages/snap-sy
                               directory name on first backup
      -u, --UUID <UUID>        Specify the UUID of the mounted BTRFS subvolume to back up to. Otherwise will prompt.
                               If multiple mount points are found with the same UUID, will prompt user.
+     -s, --subvolid <subvlid> Specify the subvolume id of the mounted BTRFS subvolume to back up to. Defaults to 5.
      --remote <address>       Send the snapshot backup to a remote machine. The snapshot will be sent via ssh. You
                               should specify the remote machine's hostname or ip address. The 'root' user must be
                               permitted to login on the remote machine.
@@ -50,76 +58,115 @@ The first time you run `snap-sync` for a particular disk (new UUID) you will be
 prompted to choose a backup location on that disk. If the directory you specify
 does not exist, it will be created.
 
-## Systemd unit and timer
-
-A systemd unit and timer are included. These are instantiated units. You need to
-specify the UUID of the disk to back up to in the `systemctl` call. Note, once
-again, the disk **must** be mounted, and it **must** only be mounted in one
-place. Example:
-
-    # systemctl start snap-sync@7360922b-c916-4d9f-a670-67fe0b91143c
-
-The timer included is weekly. Edit both files to your taste.
-
-You can exclude a configuration from backup by setting `SNAP_SYNC_EXCLUDE=yes`
-in your snapper configuration file. Additionally you should run snap-sync at
-least once for a new disk without using the service so you can be prompted for
-the backup location.
-
 ## Example command line usage
 
 ### No arguments
 
     # snap-sync
 
-    Select a mounted BTRFS device to backup to.
-    1) 43cedfb6-8775-43be-8abc-ee63bb92e10e (/)
-    2) 43cedfb6-8775-43be-8abc-ee63bb92e10e (/.snapshots)
-    3) 43cedfb6-8775-43be-8abc-ee63bb92e10e (/home)
-    4) 7360922b-c916-4d9f-a670-67fe0b91143c (/run/media/wes/backup)
-    0) Exit
-    Enter a number: 4
+    Select a mounted BTRFS device on your local machine to backup to.
+       1) /mnt (uuid=7360922b-c916-4d9f-a670-67fe0b91143c, subvolid=5)
+       0) Exit
+    Enter a number: 1
 
-    You selected the disk with UUID 7360922b-c916-4d9f-a670-67fe0b91143c.
-    The disk is mounted at /run/media/wes/backup.
+    You selected the disk with UUID 7360922b-c916-4d9f-a670-67fe0b91143c, subovolid=5.
+    The disk is mounted at /mnt.
 
-    Will backup /home/.snapshots/1097/snapshot to /run/media/wes/backup/acer-c720/home/1097//snapshot
-    Continue with backup [Y/n]? y
-    At subvol /home/.snapshots/1097/snapshot
+    Initial configuration...
 
-    Will backup //.snapshots/2288/snapshot to /run/media/wes/backup/acer-c720/root/2288//snapshot
-    Continue with backup [Y/n]? y
-    At subvol //.snapshots/2288/snapshot
+    Creating new snapshot for home...
+    Will backup /home/.snapshots/4196/snapshot to /mnt/acer-c720/home/4196//snapshot
+    Continue with backup [Y/n]?
+
+    Creating new snapshot for root...
+    Will backup //.snapshots/8455/snapshot to /mnt/acer-c720/root/8455//snapshot
+    Continue with backup [Y/n]?
+
+    Performing backups...
+
+    Sending incremental snapshot for home...
+    At subvol /home/.snapshots/4196/snapshot
+    At snapshot snapshot
+    Modifying data for old snapshot for home...
+    Tagging new snapshot as latest backup for home...
+
+    Sending incremental snapshot for root...
+    At subvol //.snapshots/8455/snapshot
+    At snapshot snapshot
+    Modifying data for old snapshot for root...
+    Tagging new snapshot as latest backup for root...
 
     Done!
 
 The related snapshots from this on the local machine are for `home`:
 
-    single | 1097 |       | Sat 01 Oct 2016 07:48:40 AM CDT | root |          | latest incremental backup | backupdir=acer-c720, uuid=7360922b-c916-4d9f-a670-67fe0b91143c
+    single | 4196 |       | Sat 11 Nov 2017 01:37:44 PM EST | root |          | latest incremental backup | backupdir=acer-c720, subvolid=5, uuid=7360922b-c916-4d9f-a670-67fe0b91143c
 
 and for `root`:
 
-    single | 2288 |       | Sat 01 Oct 2016 07:50:56 AM CDT | root |          | latest incremental backup | backupdir=acer-c720, uuid=7360922b-c916-4d9f-a670-67fe0b91143c
+    single | 8455 |       | Sat 11 Nov 2017 01:37:46 PM EST | root |          | latest incremental backup | backupdir=acer-c720, subvolid=5, uuid=7360922b-c916-4d9f-a670-67fe0b91143c
 
 As you can see the userdata column for snapper is used to keep track of these
 snapshots for the next time the script is run so that only the changes will need
 to be sent.
 
-### With UUID specified and no confirmations
+### With UUID and subvolid specified and no confirmations
 
-This is essentially what the systemd service does.
+    # snap-sync --UUID 7360922b-c916-4d9f-a670-67fe0b91143c --subvolid 5 --noconfirm
 
-    # snap-sync --UUID 7360922b-c916-4d9f-a670-67fe0b91143c --noconfirm
-    You selected the disk with UUID 7360922b-c916-4d9f-a670-67fe0b91143c.
-    The disk is mounted at /run/media/wes/backup.
+    You selected the disk with UUID 7360922b-c916-4d9f-a670-67fe0b91143c, subovolid=5.
+    The disk is mounted at /mnt.
 
-    Will backup /home/.snapshots/1379/snapshot to /run/media/wes/backup/acer-c720/home/1379//snapshot
-    At subvol /home/.snapshots/1379/snapshot
+    Initial configuration...
 
-    Will backup //.snapshots/2782/snapshot to /run/media/wes/backup/acer-c720/root/2782//snapshot
-    At subvol //.snapshots/2782/snapshot
+    Creating new snapshot for home...
+    Will backup /home/.snapshots/4197/snapshot to /mnt/acer-c720/home/4197//snapshot
+
+    Creating new snapshot for root...
+    Will backup //.snapshots/8456/snapshot to /mnt/acer-c720/root/8456//snapshot
+
+    Performing backups...
+
+    Sending incremental snapshot for home...
+    At subvol /home/.snapshots/4197/snapshot
+    At snapshot snapshot
+    Modifying data for old snapshot for home...
+    Tagging new snapshot as latest backup for home...
+
+    Sending incremental snapshot for root...
+    At subvol //.snapshots/8456/snapshot
+    At snapshot snapshot
+    Modifying data for old snapshot for root...
+    Tagging new snapshot as latest backup for root...
 
     Done!
+
+## systemd example
+
+## service
+
+    [Unit]
+    Description=Run snap-sync backup 
+
+    [Install]
+    WantedBy=multi-user.target
+
+    [Service]
+    Type=simple
+    ExecStart=/usr/bin/snap-sync --UUID 7360922b-c916-4d9f-a670-67fe0b91143c --subvolid 5 --noconfirm
+
+## timer
+
+    [Unit]
+    Description=Run snap-sync weekly
+
+    [Timer]
+    OnCalendar=weekly
+    AccuracySec=12h
+    Persistent=true
+
+    [Install]
+    WantedBy=timers.target
 
 ## Contributing
 
