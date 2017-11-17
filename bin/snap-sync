@@ -31,7 +31,7 @@ name="snap-sync"
 
 # The following line is modified by the Makefile or
 # find_snapper_config script
-SNAPPER_CONFIG=/etc/default/snapper
+SNAPPER_CONFIG=/etc/sysconfig/snapper
 
 TMPDIR=$(mktemp -d)
 PIPE=$TMPDIR/$name.out
