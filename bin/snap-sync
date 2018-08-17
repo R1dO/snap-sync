@@ -1,7 +1,7 @@
 #!/bin/bash
 # snap-sync
 # https://github.com/wesbarnett/snap-sync
-# Copyright (C) 2016, 2017 James W. Barnett
+# Copyright (C) 2016-2018 Wes Barnett
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -26,8 +26,12 @@
 
 set -o errtrace
 
-version="0.5"
+version="0.5.1"
 name="snap-sync"
+
+printf "\nsnap-sync version %s, Copyright (C) 2016-2018 Wes Barnett\n" "$version"
+printf "snap-sync comes with ABSOLUTELY NO WARRANTY. This is free software, and you are welcome to redistribute it 
+under certain conditions. See the license for more information. \n\n"
 
 # The following line is modified by the Makefile or
 # find_snapper_config script
@@ -101,19 +105,20 @@ $name $version
 Usage: $name [options]
 
 Options:
- -d, --description <desc> Change the snapper description. Default: "latest incremental backup"
  -c, --config <config>    Specify the snapper configuration to use. Otherwise will perform for each snapper
                           configuration. Can list multiple configurations within quotes, space-separated
                           (e.g. -c "root home").
+ -d, --description <desc> Change the snapper description. Default: "latest incremental backup"
+ -h, --help               Print this help message.
  -n, --noconfirm          Do not ask for confirmation for each configuration. Will still prompt for backup
+ -p, --port <port>        The remote port. Used with '--remote'.
                           directory name on first backup.
- -u, --UUID <UUID>        Specify the UUID of the mounted BTRFS subvolume to back up to. Otherwise will prompt.
-                          If multiple mount points are found with the same UUID, will prompt user.
- -s, --subvolid <subvlid> Specify the subvolume id of the mounted BTRFS subvolume to back up to. Defaults to 5.
  -r, --remote <address>   Send the snapshot backup to a remote machine. The snapshot will be sent via ssh. You
                           should specify the remote machine's hostname or ip address. The 'root' user must be
                           permitted to login on the remote machine.
- -p, --port <port>        The remote port.
+ -s, --subvolid <subvlid> Specify the subvolume id of the mounted BTRFS subvolume to back up to. Defaults to 5.
+ -u, --UUID <UUID>        Specify the UUID of the mounted BTRFS subvolume to back up to. Otherwise will prompt.
+                          If multiple mount points are found with the same UUID and subvolid, will prompt user.
 EOF
 }
 
@@ -155,12 +160,12 @@ while [[ $# -gt 0 ]]; do
             shift 2
 	    ;;
         *)
-            die "Unknown option: $key\nRun '$name -h' for valid options.\n"
+            die "Unknown option: '$key'. Run '$name -h' for valid options."
         ;;
     esac
 done
 
-[[ $EUID -ne 0 ]] && die "Script must be run as root." 
+[[ $EUID -ne 0 ]] && die "Script must be run as root. See '$name -h' for a description of options" 
 ! [[ -f $SNAPPER_CONFIG ]] && die "$SNAPPER_CONFIG does not exist."
 
 description=${description:-"latest incremental backup"}
@@ -222,7 +227,7 @@ for x in $UUIDS; do
 done
 
 if [[ "${#UUIDS_ARRAY[$@]}" -eq 0 ]]; then
-    die "No external btrfs subvolumes found to backup to."
+    die "No external btrfs subvolumes found to backup to. Run '$name -h' for more options."
 fi
 
 if [[ "$disk_count" > 1 ]]; then
@@ -235,17 +240,17 @@ if [[ "$disk" == -1 ]]; then
         error "A device with UUID $uuid_cmdline and subvolid $subvolid_cmdline was not found to be mounted, or it is not a BTRFS device."
     fi
     if [[ -z $ssh ]]; then
-        printf "Select a mounted BTRFS device on your local machine to backup to.\n"
+        printf "Select a mounted BTRFS device on your local machine to backup to.\nFor more options, exit and run '$name -h'.\n"
     else
-        printf "Select a mounted BTRFS device on %s to backup to.\n" "$remote"
+        printf "Select a mounted BTRFS device on %s to backup to.\nFor more options, exit and run '$name -h'.\n" "$remote"
     fi
     while [[ $disk -lt 0 || $disk -gt $i ]]; do
         for x in "${!TARGETS_ARRAY[@]}"; do
             printf "%4s) %s (uuid=%s, subvolid=%s)\n" "$((x+1))" "${TARGETS_ARRAY[$x]}" "${UUIDS_ARRAY[$x]}" "${SUBVOLIDS_ARRAY[$x]}"
         done
         printf "%4s) Exit\n" "0"
-        read -r -p "Enter a number: " disk
-        if ! [[ $disk == ?(-)+([0-9]) ]]; then
+        read -e -r -p "Enter a number: " disk
+        if ! [[ $disk == ?(-)+([0-9]) ]] || [[ $disk -lt 0 || $disk -gt $i ]]; then
             printf "\nNo disk selected. Select a disk to continue.\n"
             disk=-1
         fi
@@ -259,15 +264,18 @@ fi
 selected_subvolid="${SUBVOLIDS_ARRAY[$((disk))]}"
 selected_uuid="${UUIDS_ARRAY[$((disk))]}"
 selected_mnt="${TARGETS_ARRAY[$((disk))]}"
-printf "\nYou selected the disk with UUID %s, subovolid=%s.\n" "$selected_uuid" "$selected_subvolid" | tee $PIPE
+printf "\nYou selected the disk with uuid=%s, subvolid=%s.\n" "$selected_uuid" "$selected_subvolid" | tee $PIPE
 if [[ -z $ssh ]]; then
-    printf "The disk is mounted at %s.\n" "$selected_mnt" | tee $PIPE
+    printf "The disk is mounted at '%s'.\n" "$selected_mnt" | tee $PIPE
 else
-    printf "The disk is mounted at %s:%s.\n" "$remote" "$selected_mnt" | tee $PIPE
+    printf "The disk is mounted at '%s:%s'.\n" "$remote" "$selected_mnt" | tee $PIPE
 fi
 
 source $SNAPPER_CONFIG
 
+if [[ -z $selected_configs ]]; then
+    printf "\nInteractively cycling through all snapper configurations...\n"
+fi
 selected_configs=${selected_configs:-$SNAPPER_CONFIGS}
 
 declare -a BACKUPDIRS_ARRAY
@@ -280,8 +288,6 @@ declare -a NEW_INFO_ARRAY
 declare -a BACKUPLOC_ARRAY
 declare -a CONT_BACKUP_ARRAY
 
-printf "\nInitial configuration...\n" | tee $PIPE
-
 # Initial configuration of where backup directories are
 i=0
 for x in $selected_configs; do
@@ -293,19 +299,23 @@ for x in $selected_configs; do
 
     if [[ "$(snapper -c $x list -t single | awk '/'$name' backup in progress/ {cnt++} END {print cnt}')" -gt 0 ]]; then
         printf "\nNOTE: Previous failed %s backup snapshots found for '%s'.\n" "$name" "$x" | tee $PIPE
-        read -r -p "Delete failed backup snapshots [y/N]? " delete_failed
-        while [[ -n "$delete_failed" && "$delete_failed" != [Yy]"es" &&
-            "$delete_failed" != [Yy] && "$delete_failed" != [Nn]"o" &&
-            "$delete_failed" != [Nn] ]]; do
-            read -r -p "Delete failed backup snapshots [y/N]? " delete_failed
-            if [[ -n "$delete_failed" && "$delete_failed" != [Yy]"es" &&
-            "$delete_failed" != [Yy] && "$delete_failed" != [Nn]"o" &&
-            "$delete_failed" != [Nn] ]]; then
-                printf "Select 'y' or 'N'.\n"
+        if [[ $noconfirm == "yes" ]]; then
+            printf "'noconfirm' option passed. Failed backups will not be deleted.\n" | tee $PIPE
+        else
+            read -e -r -p "Delete failed backup snapshot(s)? (These local snapshots from failed backups are not used.) [y/N]? " delete_failed
+            while [[ -n "$delete_failed" && "$delete_failed" != [Yy]"es" &&
+                "$delete_failed" != [Yy] && "$delete_failed" != [Nn]"o" &&
+                "$delete_failed" != [Nn] ]]; do
+                read -e -r -p "Delete failed backup snapshot(s)? (These local snapshots from failed backups are not used.) [y/N] " delete_failed
+                if [[ -n "$delete_failed" && "$delete_failed" != [Yy]"es" &&
+                "$delete_failed" != [Yy] && "$delete_failed" != [Nn]"o" &&
+                "$delete_failed" != [Nn] ]]; then
+                    printf "Select 'y' or 'N'.\n"
+                fi
+            done
+            if [[ "$delete_failed" == [Yy]"es" || "$delete_failed" == [Yy] ]]; then
+                snapper -c $x delete $(snapper -c $x list | awk '/'$name' backup in progress/ {print $3}')
             fi
-        done
-        if [[ "$delete_failed" == [Yy]"es" || "$delete_failed" == [Yy] ]]; then
-            snapper -c $x delete $(snapper -c $x list | awk '/'$name' backup in progress/ {print $3}')
         fi
     fi
 
@@ -331,7 +341,7 @@ for x in $selected_configs; do
 
     if [[ -z "$old_num" ]]; then
         printf "No backups have been performed for '%s' on this disk.\n" "$x"
-        read -r -p "Enter name of subvolume to store backups, relative to $selected_mnt (to be created if not existing): " mybackupdir
+        read -e -r -p "Enter name of subvolume to store backups, relative to $selected_mnt (to be created if not existing): " mybackupdir
         printf "This will be the initial backup for snapper configuration '%s' to this disk. This could take awhile.\n" "$x"
         BACKUPDIR="$selected_mnt/$mybackupdir"
         $ssh test -d "$BACKUPDIR" || $ssh btrfs subvolume create "$BACKUPDIR"
@@ -343,7 +353,7 @@ for x in $selected_configs; do
     BACKUPDIRS_ARRAY[$i]="$BACKUPDIR"
     MYBACKUPDIR_ARRAY[$i]="$mybackupdir"
 
-    printf "Creating new snapshot for %s...\n" "$x" | tee $PIPE
+    printf "Creating new local snapshot for '%s' configuration...\n" "$x" | tee $PIPE
     new_num=$(snapper -c "$x" create --print-number -d "$name backup in progress")
     new_snap=$SUBVOLUME/.snapshots/$new_num/snapshot
     new_info=$SUBVOLUME/.snapshots/$new_num/info.xml
@@ -353,6 +363,11 @@ for x in $selected_configs; do
         printf "Will backup %s to %s\n" "$new_snap" "$backup_location/snapshot" | tee $PIPE
     else
         printf "Will backup %s to %s\n" "$new_snap" "$remote":"$backup_location/snapshot" | tee $PIPE
+    fi
+
+    if ($ssh test -d "$backup_location/snapshot") ; then
+        printf "WARNING: Backup directory '%s' already exists. This configuration will be skipped!\n" "$backup_location/snapshot" | tee $PIPE
+        printf "Move or delete destination directory and try backup again.\n" | tee $PIPE
     fi
 
     NEW_NUM_ARRAY[$i]="$new_num"
@@ -368,7 +383,7 @@ for x in $selected_configs; do
         while [[ -n "$cont_backup" && "$cont_backup" != [Yy]"es" &&
             "$cont_backup" != [Yy] && "$cont_backup" != [Nn]"o" &&
             "$cont_backup" != [Nn] ]]; do
-            read -r -p "Continue with backup [Y/n]? " cont_backup
+            read -e -r -p "Proceed with backup of '$x' configuration [Y/n]? " cont_backup
             if [[ -n "$cont_backup" && "$cont_backup" != [Yy]"es" &&
             "$cont_backup" != [Yy] && "$cont_backup" != [Nn]"o" &&
             "$cont_backup" != [Nn] ]]; then
@@ -379,7 +394,7 @@ for x in $selected_configs; do
 
     if [[ "$cont_backup" != [Yy]"es" && "$cont_backup" != [Yy] && -n "$cont_backup" ]]; then
         CONT_BACKUP_ARRAY[$i]="no"
-        printf "Aborting backup for this configuration.\n"
+        printf "Not backing up '%s' configuration.\n" $x
         snapper -c $x delete $new_num
     fi
 
@@ -421,21 +436,27 @@ for x in $selected_configs; do
     new_info="${NEW_INFO_ARRAY[$i]}"
     backup_location="${BACKUPLOC_ARRAY[$i]}"
 
+    if ($ssh test -d "$backup_location/snapshot") ; then
+        printf "ERROR: Backup directory '%s' already exists. Skipping backup of this configuration!\n" "$backup_location/snapshot" | tee $PIPE
+        continue
+    fi
+
     $ssh mkdir -p $backup_location
 
     if [[ -z "$old_num" ]]; then
-        printf "Sending first snapshot for %s...\n" "$x" | tee $PIPE  
+        printf "Sending first snapshot for '%s' configuration...\n" "$x" | tee $PIPE  
         btrfs send "$new_snap" | $ssh btrfs receive "$backup_location" &>/dev/null
 
     else
 
-        printf "Sending incremental snapshot for %s...\n" "$x" | tee $PIPE  
+        printf "Sending incremental snapshot for '%s' configuration...\n" "$x" | tee $PIPE  
         # Sends the difference between the new snapshot and old snapshot to the
         # backup location. Using the -c flag instead of -p tells it that there
         # is an identical subvolume to the old snapshot at the receiving
         # location where it can get its data. This helps speed up the transfer.
+
         btrfs send -c "$old_snap" "$new_snap" | $ssh btrfs receive "$backup_location"
-        printf "Modifying data for old snapshot for %s...\n" "$x" | tee $PIPE
+        printf "Modifying data for old local snapshot for '%s' configuration...\n" "$x" | tee $PIPE
         snapper -v -c "$x" modify -d "old snap-sync snapshot (you may remove)" -u "backupdir=,subvolid=,uuid=" -c "number" "$old_num"
     fi
 
@@ -455,10 +476,10 @@ for x in $selected_configs; do
     userdata="backupdir=$mybackupdir, subvolid=$selected_subvolid, uuid=$selected_uuid"
 
     # Tag new snapshot as the latest
-    printf "Tagging new snapshot as latest backup for %s...\n" "$x" | tee $PIPE
+    printf "Tagging local snapshot as latest backup for '%s' configuration...\n" "$x" | tee $PIPE
     snapper -v -c "$x" modify -d "$description" -u "$userdata" "$new_num"
 
-    printf "Backup complete for configuration %s.\n" "$x" > $PIPE
+    printf "Backup complete for '%s' configuration.\n" "$x" > $PIPE
 
 done
 
