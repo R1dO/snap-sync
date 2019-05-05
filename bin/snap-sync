@@ -26,12 +26,11 @@
 
 set -o errtrace
 
-version="0.5.1"
+version="0.6"
 name="snap-sync"
 
-printf "\nsnap-sync version %s, Copyright (C) 2016-2018 Wes Barnett\n" "$version"
-printf "snap-sync comes with ABSOLUTELY NO WARRANTY. This is free software, and you are welcome to redistribute it 
-under certain conditions. See the license for more information. \n\n"
+printf "\nsnap-sync version %s, Copyright (C) 2016-2019 Wes Barnett\n" "$version"
+printf "snap-sync comes with ABSOLUTELY NO WARRANTY. This is free software, and you are welcome to redistribute it under certain conditions. See the license for more information. \n\n"
 
 # The following line is modified by the Makefile or
 # find_snapper_config script
@@ -50,7 +49,7 @@ if [[ $? -ne 0 ]]; then
 fi
 
 notify() {
-    for u in $(users | sed 's/ /\n/' | sort -u); do
+    for u in $(users | tr ' ' '\n' | sort -u); do
         sudo -u $u DISPLAY=:0 \
         DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(sudo -u $u id -u)/bus \
         notify-send -a $name "$1" "$2" --icon="dialog-$3"
@@ -105,20 +104,16 @@ $name $version
 Usage: $name [options]
 
 Options:
- -c, --config <config>    Specify the snapper configuration to use. Otherwise will perform for each snapper
-                          configuration. Can list multiple configurations within quotes, space-separated
-                          (e.g. -c "root home").
- -d, --description <desc> Change the snapper description. Default: "latest incremental backup"
- -h, --help               Print this help message.
- -n, --noconfirm          Do not ask for confirmation for each configuration. Will still prompt for backup
- -p, --port <port>        The remote port. Used with '--remote'.
-                          directory name on first backup.
- -r, --remote <address>   Send the snapshot backup to a remote machine. The snapshot will be sent via ssh. You
-                          should specify the remote machine's hostname or ip address. The 'root' user must be
-                          permitted to login on the remote machine.
- -s, --subvolid <subvlid> Specify the subvolume id of the mounted BTRFS subvolume to back up to. Defaults to 5.
- -u, --UUID <UUID>        Specify the UUID of the mounted BTRFS subvolume to back up to. Otherwise will prompt.
-                          If multiple mount points are found with the same UUID and subvolid, will prompt user.
+ -c, --config <config>    snapper configuration to backup
+ -d, --description <desc> snapper description
+ -h, --help               print this message
+ -n, --noconfirm          do not ask for confirmation
+ -p, --port <port>        remote port; wsed with '--remote'.
+ -r, --remote <address>   ip address of a remote machine to backup to
+ -s, --subvolid <subvlid> subvolume id of the mounted BTRFS subvolume to back up to
+ -u, --UUID <UUID>        UUID of the mounted BTRFS subvolume to back up to
+
+See 'man snap-sync' for more details.
 EOF
 }
 
@@ -314,7 +309,7 @@ for x in $selected_configs; do
                 fi
             done
             if [[ "$delete_failed" == [Yy]"es" || "$delete_failed" == [Yy] ]]; then
-                snapper -c $x delete $(snapper -c $x list | awk '/'$name' backup in progress/ {print $3}')
+                snapper -c $x delete $(snapper -c $x list | awk '/'$name' backup in progress/ {print $1}')
             fi
         fi
     fi

@@ -21,9 +21,13 @@ SNAPPER_CONFIG ?= /etc/sysconfig/snapper
 
 BIN_DIR = $(DESTDIR)$(PREFIX)/bin
 SYSTEMD_DIR = $(DESTDIR)$(PREFIX)/lib/systemd/system
+SHARE_DIR = $(DESTDIR)$(PREFIX)/share
 
 .PHONY: install
 
 install:
 	@./find_snapper_config || sed -i 's@^SNAPPER_CONFIG.*@SNAPPER_CONFIG='$(SNAPPER_CONFIG)'@g' bin/$(PKGNAME)
+	@install -Dm644 LICENSE -t $(SHARE_DIR)/licenses/$(PKGNAME)/
+	@install -Dm644 README.md -t $(SHARE_DIR)/doc/$(PKGNAME)/
+	@install -Dm644 man8/* -t $(SHARE_DIR)/man/man8/
 	@install -Dm755 bin/* -t $(BIN_DIR)/
