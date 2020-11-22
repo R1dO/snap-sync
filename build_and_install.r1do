@@ -1,1 +1,2 @@
-sudo make SNAPPER_CONFIG=/etc/default/snapper install
+# Make takes care of correct SNAPPER_CONFIG, hence it is quite simple now"
+sudo make install
